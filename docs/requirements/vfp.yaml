@@ -1,0 +1,65 @@
+# docs/requirements/vfp.yaml
+# Requirements for vibration-fault-predict. Scaffolded project — no code yet.
+# All requirements are draft; code will be written against these after G1 review.
+- id: VFP-FUN-001
+  text: >
+    The vibration feature extractor shall compute a configurable set of
+    time-domain features (RMS, kurtosis, crest factor) from each window of
+    accelerometer data.
+  type: functional
+  rationale: >
+    N-01 requires a fixed-point DSP pipeline that transforms raw vibration
+    samples into compact features suitable for a small classifier. Time-domain
+    features are the first milestone before optional FFT-based features.
+  parent: N-01
+  priority: shall
+  verification: test
+  status: draft
+- id: VFP-FUN-002
+  text: >
+    The anomaly classifier shall output a binary decision (healthy / degraded)
+    with a confidence score from the extracted feature vector.
+  type: functional
+  rationale: >
+    N-01 requires a production-grade anomaly detection output. The binary
+    decision with confidence is the canonical industrial output format.
+  parent: N-01
+  priority: shall
+  verification: test
+  status: draft
+- id: VFP-PER-001
+  text: >
+    The feature extraction plus classification latency per window shall not
+    exceed 50 ms at the configured sample rate.
+  type: performance
+  rationale: >
+    N-02 requires continuous streaming inference. 50 ms is the upper bound
+    for real-time fault detection on rotating machinery at typical sample
+    rates.
+  parent: N-02
+  priority: shall
+  verification: test
+  status: draft
+- id: VFP-INT-001
+  text: >
+    The feature extractor and classifier shall communicate with the IMU
+    driver through the port interface without hardware-specific code.
+  type: interface
+  rationale: >
+    N-03 requires host-testable domain logic per the architecture rule. The
+    DSP pipeline must not include MCU or HAL headers.
+  parent: N-03
+  priority: shall
+  verification: analysis
+  status: draft
+- id: VFP-CON-001
+  text: >
+    The domain code shall compile on the host without any hardware or vendor
+    includes.
+  type: constraint
+  rationale: >
+    N-03 requires the layering rule to be enforceable by CI.
+  parent: N-03
+  priority: should
+  verification: analysis
+  status: draft
