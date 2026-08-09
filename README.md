@@ -1,47 +1,92 @@
-# embedded-template — the reusable infra for every project repo
+# vibration-fault-predict — on-device vibration anomaly detection
 
-This is the engineering platform behind all 20 projects of the embedded
-portfolio program ([portfolio meta-repo](https://github.com/caiobvilar/Embedded_Portfolio)):
-the CMake toolchain files, CI pipelines, requirements tooling, fake HAL, and
-doc skeletons that make a new project repo start already-green.
+**On-device fault/anomaly detection from vibration signature on an STM32F411,
+distinguishing healthy from degraded rotating-machinery operation — scaffolded;
+the signal-processing pipeline (windowed FFT or time-domain features) is the
+design decision in front, and the hardware rig it needs does not exist yet.**
 
-It exists so that **consistency across repos is itself a signal** — every
-project repo uses the same build, the same gates, the same doc structure, so
-an interviewer (or future-me) can orient in 30 seconds.
+The industrial framing of the EdgeAI trio: not digit or gesture classification,
+but predictive maintenance — the canonical production use case for the "edge-AI
+deployment" claim. The DSP substance lives in T2: windowed signal features
+(RMS, kurtosis, crest factor) or an on-device FFT feeding a small quantized
+classifier, with a per-window, continuous latency budget rather than
+per-inference.
 
-## What's inside
+> **Status: migrated scaffold.** No code yet. The vibration source (a motor
+> rig) does not exist; L1/L2 can proceed on a clearly-labelled public dataset,
+> L3/L4 need the real rig. The program's P15 (BLDC FOC drive) is the natural
+> future source of that rig.
+
+## What this demonstrates (planned)
+
+| | |
+|---|---|
+| **Signal processing** | Windowed FFT / time-domain features → small classifier; per-window latency |
+| **Firmware** | Reuses `gesture-imu`'s IMU driver (LSM303DLHC, I2C1); quantized inference |
+| **Process** | Feature-pipeline ADR, stand-in dataset labelled honestly, fault-injection framing |
+
+## Verified facts in hand
+
+| Fact | Value | Source |
+|---|---|---|
+| Accel/mag | LSM303DLHC (U5), I2C1: SCL=PB6, SDA=PB9 | MB1115 B.2 schematic sheet 6/6 |
+| Board identity | `MB1115 B-02`, serial 217380895 | silkscreen, 2026-07-27 |
+
+Full sheet with provenance in [docs/hardware/stm32f411e-disco.md](docs/hardware/stm32f411e-disco.md).
+
+## The honest blocker
+
+The machine under test does not exist. The plan is that P15's motor drive
+(`12-T4-hardware.md §P15`) eventually becomes the vibration rig — the IMU
+board mounts on the motor, induced-fault fixtures (e.g. an imbalanced load)
+generate real fault-condition data. Until then, everything above L2 is
+explicitly blocked, and the README/PLAN say so rather than pretending.
+
+## Architecture (planned)
+
+```
+LSM303DLHC (I2C1) ──► src/domain/ window → features (FFT / RMS / kurtosis)
+                                          │
+                                          ▼
+                               quantized classifier → fault flag
+                                          │
+                                          ▼
+                          debug UART  ?peek vibration_fault
+```
+
+## Repository layout
 
 | Path | Contents |
 |---|---|
-| `cmake/` | `arm-none-eabi.cmake` (cross toolchain, pin by board), `host.cmake` (native + ASAN/UBSAN + coverage helpers) |
-| `.github/workflows/` | `ci.yml`, `sitl.yml`, `hil.yml`, `release.yml` — the four pipelines, parameterised |
-| `tools/` | `gen_rtm.py` (requirements↔tests RTM gate), `check_layering.py`, `check_size_budget.py`, `sign_image.py` (Ed25519) |
-| `src/ports/` | Hexagonal port interfaces: `i_uart.h`, `i_spi.h`, `i_i2c.h`, `i_clock.h` |
-| `src/adapters/host/` | Test doubles for the ports (recording fake UART, scripted clock) |
-| `templates/docs/` | SRS, test-plan, design-review-checklist, project-README skeletons |
-| `Containerfile.toolchain` + `requirements.*` | Reproducible toolchain container (pin everything, hash-locked Python deps) |
-| `.clang-format` `.clang-tidy` `.cppcheck-suppressions` | Zero-warning static-analysis posture |
+| `src/domain/` | Feature extraction + classifier logic — hardware-free, host-testable |
+| `src/ports/` + `src/adapters/` | Reuses `gesture-imu`'s IMU driver |
+| `test/unit/` | Unity tests against the stand-in dataset |
+| `test/integration/` | Renode, replaying recorded/stand-in vibration data |
+| `docs/adr/` | Toolchain decisions (0001, 0003) |
+| `docs/hardware/` | STM32F411E-DISCO fact sheet |
 
-## Create a new project repo from this template
+## Build and run
 
-```bash
-# on GitHub, "Use this template" -- or:
-gh repo create <project-slug> --template caiobvilar/embedded-template --public
-```
+Not yet buildable — no CMake project exists. SRS + G1 first, then the
+feature-pipeline ADR, then the stand-in dataset.
 
-Then:
-1. Write `docs/02-srs.md` (from `templates/docs/srs-template.md`) and
-   `docs/requirements/*.yaml` — **before any code** (program rule 1).
-2. Set the flash/RAM budgets in `ci.yml`'s size-gate step and the target in
-   `cmake/arm-none-eabi.cmake` (per-board `-mcpu`).
-3. Generate the CubeMX project into `cubemx/` for the firmware half (see the
-   portfolio's ADR pattern for the CubeMX/CMake integration boundary).
-4. Put pure logic in `src/domain/` (host-testable), hardware in
-   `src/adapters/stm32f4/`, interfaces in `src/ports/`.
-5. `cmake --preset host-test && ctest --preset host-test` — the loop is
-   milliseconds, so you actually run it.
+## Documentation
+
+- [PLAN.md](PLAN.md) — durable state, the blocker, open questions, log
+- [docs/hardware/stm32f411e-disco.md](docs/hardware/stm32f411e-disco.md) — board facts
+
+## What I'd do differently
+
+- The vibration rig was assumed, then parked. The honest move was to name
+  P15 as the source of real fault data from the start and treat everything
+  above L2 as gated on it — that is now written into the plan, but the
+  scaffold exists *because* the assumption was made without a commit behind it.
+- A stand-in dataset is a substitute and will be labelled as one; the risk is
+  that a model tuned on public bearing data looks too good. The real
+  acceptance number has to come from the induced-fault bench campaign.
 
 ## License
 
-Code and tooling: **Apache-2.0** · Documentation: **CC BY 4.0**
-(per the program's publishing rules, 06-publishing §2.3).
+Code: **Apache-2.0** (`LICENSE`) · Documentation: **CC BY 4.0**
+(`docs/LICENSE-docs.md`) — per the program's publishing rules
+([06-publishing.md §2.3](https://github.com/caiobvilar/Embedded_Portfolio/blob/main/06-publishing.md)).
